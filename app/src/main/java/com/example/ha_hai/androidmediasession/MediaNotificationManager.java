@@ -36,9 +36,11 @@ public class MediaNotificationManager {
 
         mNotificationManager =
                 (NotificationManager) mService.getSystemService(Context.NOTIFICATION_SERVICE);
+
     }
 
     public NotificationCompat.Builder from(Context context, MediaSessionCompat mediaSession) {
+
         MediaControllerCompat controller = mediaSession.getController();
         MediaMetadataCompat mediaMetadata = controller.getMetadata();
         MediaDescriptionCompat description = mediaMetadata.getDescription();
@@ -51,20 +53,24 @@ public class MediaNotificationManager {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(mService, CHANNEL_ID);
         builder.setStyle(
                 new MediaStyle()
+                        // allows third-party apps and companion devices to access and control the session.
                         .setMediaSession(mediaSession.getSessionToken())
                         .setShowActionsInCompactView(0, 1, 2)
-                        // For backwards compatibility with Android L and earlier.
+                        // For backwards compatibility with Android L and earlier. (< Android 5 API 21)
+                        // add a cancel button in the upper-right corner of the notification by calling setShowCancelButton(true)
+                        // and setCancelButtonIntent()
                         .setShowCancelButton(true)
-                        .setCancelButtonIntent(
-                                MediaButtonReceiver.buildMediaButtonPendingIntent(
-                                        mService,
-                                        PlaybackStateCompat.ACTION_STOP)))
+                        .setCancelButtonIntent(MediaButtonReceiver.buildMediaButtonPendingIntent(context,
+                                PlaybackStateCompat.ACTION_STOP))
+        )
                 .setContentTitle(description.getTitle())
                 .setContentText(description.getSubtitle())
                 .setSubText(description.getDescription())
                 .setLargeIcon(description.getIconBitmap())
                 .setContentIntent(controller.getSessionActivity())
-                .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setContentIntent(createContentIntent())
+                .setAutoCancel(true)
                 .setDeleteIntent(
                         MediaButtonReceiver.buildMediaButtonPendingIntent(context, PlaybackStateCompat.ACTION_STOP))
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
@@ -80,7 +86,7 @@ public class MediaNotificationManager {
             CharSequence name = "MediaSession";
             // The user-visible description of the channel.
             String description = "MediaSession and MediaPlayer";
-            int importance = NotificationManager.IMPORTANCE_LOW;
+            int importance = NotificationManager.IMPORTANCE_DEFAULT;
             NotificationChannel mChannel = new NotificationChannel(CHANNEL_ID, name, importance);
             // Configure the notification channel.
             mChannel.setDescription(description);

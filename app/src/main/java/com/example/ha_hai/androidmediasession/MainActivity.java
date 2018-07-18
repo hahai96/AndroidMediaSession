@@ -43,6 +43,16 @@ public class MainActivity extends AppCompatActivity {
             setMediaController(mMediaController);
             getMediaController().getTransportControls().playFromMediaId(String.valueOf(R.raw.emmoilanguoiyeuanh), null);
         }
+
+        @Override
+        public void onConnectionSuspended() {
+            // The Service has crashed. Disable transport controls until it automatically reconnects
+        }
+
+        @Override
+        public void onConnectionFailed() {
+            // The Service has refused our connection
+        }
     };
 
     private MediaController.Callback mMediaControllerCallback = new MediaController.Callback() {
@@ -81,6 +91,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Log.d("AAA", "onCreate: MainActivity");
         setContentView(R.layout.activity_main);
 
         mbtnNext = findViewById(R.id.btnNext);
@@ -92,6 +103,7 @@ public class MainActivity extends AppCompatActivity {
                 mMediaBrowserConnectionCallback, getIntent().getExtras());
 
         mMediaBrowser.connect();
+
 
         mbtnPlay.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -142,15 +154,15 @@ public class MainActivity extends AppCompatActivity {
         mValueAnimator.start();
     }
 
-//    @Override
-//    protected void onDestroy() {
-//        super.onDestroy();
-//        if (getMediaController().getPlaybackState().getState() == PlaybackState.STATE_PLAYING) {
-//            getMediaController().getTransportControls().pause();
-//        }
-//
-//        mMediaBrowser.disconnect();
-//    }
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (getMediaController() != null) {
+            getMediaController().unregisterCallback(mMediaControllerCallback);
+        }
+
+        mMediaBrowser.disconnect();
+    }
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
