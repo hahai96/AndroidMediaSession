@@ -1,14 +1,17 @@
 package com.example.ha_hai.androidmediasession;
 
 import android.animation.ValueAnimator;
+import android.app.ActivityManager;
 import android.content.ComponentName;
+import android.content.Context;
 import android.media.MediaMetadata;
-import android.media.browse.MediaBrowser;
-import android.media.session.MediaController;
 import android.media.session.PlaybackState;
 import android.os.Build;
-import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
+import android.os.RemoteException;
+import android.support.v4.media.MediaBrowserCompat;
+import android.support.v4.media.MediaMetadataCompat;
+import android.support.v4.media.session.MediaControllerCompat;
+import android.support.v4.media.session.PlaybackStateCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -23,8 +26,8 @@ public class MainActivity extends AppCompatActivity {
 
     private boolean mIsTracking = false;
 
-    private MediaBrowser mMediaBrowser;
-    private MediaController mMediaController;
+    private MediaBrowserCompat mMediaBrowser;
+    private MediaControllerCompat mMediaController;
     private ValueAnimator mValueAnimator;
 
     private ImageButton mbtnPlay, mbtnPre, mbtnNext;
@@ -32,15 +35,21 @@ public class MainActivity extends AppCompatActivity {
 
     private boolean isPlaying;
 
-    private MediaBrowser.ConnectionCallback mMediaBrowserConnectionCallback = new MediaBrowser.ConnectionCallback() {
+    private MediaBrowserCompat.ConnectionCallback mMediaBrowserConnectionCallback = new MediaBrowserCompat.ConnectionCallback() {
 
         @Override
         public void onConnected() {
             super.onConnected();
-            mMediaController = new MediaController(MainActivity.this, mMediaBrowser.getSessionToken());
+
+            try {
+                mMediaController = new MediaControllerCompat(MainActivity.this, mMediaBrowser.getSessionToken());
+            } catch (RemoteException e) {
+                e.printStackTrace();
+            }
             mMediaController.registerCallback(mMediaControllerCallback);
             // Khi chạy android 5.0 trở lên phải gọi setSupportMediaController (media buttons)
-            setMediaController(mMediaController);
+            MediaControllerCompat.setMediaController(MainActivity.this, mMediaController);
+
             getMediaController().getTransportControls().playFromMediaId(String.valueOf(R.raw.emmoilanguoiyeuanh), null);
         }
 
@@ -55,10 +64,10 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
-    private MediaController.Callback mMediaControllerCallback = new MediaController.Callback() {
 
+    private MediaControllerCompat.Callback mMediaControllerCallback = new MediaControllerCompat.Callback() {
         @Override
-        public void onPlaybackStateChanged(@NonNull PlaybackState state) {
+        public void onPlaybackStateChanged(PlaybackStateCompat state) {
             Log.d("AAA", "onPlaybackStateChanged");
             super.onPlaybackStateChanged(state);
             if (state == null) {
@@ -78,13 +87,18 @@ public class MainActivity extends AppCompatActivity {
         }
 
         @Override
-        public void onMetadataChanged(@Nullable MediaMetadata metadata) {
+        public void onMetadataChanged(MediaMetadataCompat metadata) {
             super.onMetadataChanged(metadata);
             Log.d("AAA", "onMetadataChanged");
 
             final int max = metadata != null ? (int) metadata.getLong(MediaMetadata.METADATA_KEY_DURATION) : 0;
             mProgress.setProgress(0);
             mProgress.setMax(max);
+
+            //xử lý sau khi mở activity từ notification
+            PlaybackStateCompat stateCompat = MediaControllerCompat.getMediaController(MainActivity.this).getPlaybackState();
+            if (stateCompat != null)
+                onPlaybackStateChanged(stateCompat);
         }
     };
 
@@ -99,19 +113,19 @@ public class MainActivity extends AppCompatActivity {
         mbtnPre = findViewById(R.id.mbtnPre);
         mProgress = findViewById(R.id.progress);
 
-        mMediaBrowser = new MediaBrowser(this, new ComponentName(this, BackgroundAudioService.class),
+        mMediaBrowser = new MediaBrowserCompat(this, new ComponentName(this, BackgroundAudioService.class),
                 mMediaBrowserConnectionCallback, getIntent().getExtras());
 
         mMediaBrowser.connect();
-
 
         mbtnPlay.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 if (isPlaying)
                     getMediaController().getTransportControls().pause();
-                else
+                else {
                     getMediaController().getTransportControls().play();
+                }
             }
         });
 
@@ -134,7 +148,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void updateProgress(PlaybackState state) {
+    private void updateProgress(PlaybackStateCompat state) {
         int progress = (state != null) ? (int) state.getPosition() : 0;
         int timeToEnd = (int) ((mProgress.getMax() - progress) / state.getPlaybackSpeed());
         mValueAnimator = ValueAnimator.ofInt(progress, mProgress.getMax());
@@ -158,7 +172,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         if (getMediaController() != null) {
-            getMediaController().unregisterCallback(mMediaControllerCallback);
+            MediaControllerCompat.getMediaController(MainActivity.this).unregisterCallback(mMediaControllerCallback);
         }
 
         mMediaBrowser.disconnect();
@@ -178,6 +192,16 @@ public class MainActivity extends AppCompatActivity {
                 return true;
         }
         return super.onKeyDown(keyCode, event);
+    }
+
+    private boolean isServiceRunning(Class<?> serviceClass) {
+        ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        for (ActivityManager.RunningServiceInfo service : manager.getRunningServices(Integer.MAX_VALUE)) {
+            if (serviceClass.getName().equals(service.service.getClassName())) {
+                return true;
+            }
+        }
+        return false;
     }
 
 }

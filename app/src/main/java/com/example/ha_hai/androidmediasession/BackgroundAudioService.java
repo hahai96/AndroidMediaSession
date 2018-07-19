@@ -49,6 +49,9 @@ public class BackgroundAudioService extends MediaBrowserServiceCompat implements
 
     private long mSeekWhileNotPlaying = -1;
 
+    //service đã được chạy? sau khi activity được mở bởi notification
+    public static boolean isServiceRunning = false;
+
     private BroadcastReceiver mNoisyReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -99,6 +102,8 @@ public class BackgroundAudioService extends MediaBrowserServiceCompat implements
                 return;
             }
 
+            Log.d("AAA", "mMediaPlayer = " + mMediaPlayer);
+
             if (mMediaPlayer == null) {
                 onPlayFromMediaId(String.valueOf(R.raw.emmoilanguoiyeuanh), null);
             }
@@ -109,13 +114,13 @@ public class BackgroundAudioService extends MediaBrowserServiceCompat implements
             setMediaPlaybackState(PlaybackStateCompat.STATE_PLAYING);
 
             if (!mServiceInStartedState) {
-                Log.d("AAA", "mServiceInStartedState = " + mServiceInStartedState);
                 ContextCompat.startForegroundService(BackgroundAudioService.this, new Intent(BackgroundAudioService.this, BackgroundAudioService.class));
                 mServiceInStartedState = true;
             }
 
             showPlayingNotification();
             mMediaPlayer.start();
+            isServiceRunning = true;
         }
 
         @Override
@@ -133,36 +138,40 @@ public class BackgroundAudioService extends MediaBrowserServiceCompat implements
 
         @Override
         public void onPlayFromMediaId(String mediaId, Bundle extras) {
-            Log.d("AAA", "onPlayFromMediaId: BackgroundAudioService");
             super.onPlayFromMediaId(mediaId, extras);
+            Log.d("AAA", "onPlayFromMediaId: BackgroundAudioService");
 
-            try {
-                onPrepare();
-                afd = getResources().openRawResourceFd(Integer.valueOf(mediaId));
-                if (afd == null) {
+            if (!isServiceRunning) {
+                try {
+                    onPrepare();
+                    afd = getResources().openRawResourceFd(Integer.valueOf(mediaId));
+                    if (afd == null) {
+                        return;
+                    }
+
+                    try {
+                        mMediaPlayer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+
+                    } catch (IllegalStateException e) {
+                        mMediaPlayer.release();
+                        initMediaPlayer();
+                        mMediaPlayer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+                    }
+
+                    afd.close();
+                } catch (IOException e) {
                     return;
                 }
 
                 try {
-                    mMediaPlayer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
-
-                } catch (IllegalStateException e) {
-                    mMediaPlayer.release();
-                    initMediaPlayer();
-                    mMediaPlayer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+                    mMediaPlayer.prepare();
+                    initMediaSessionMetadata();
+                } catch (IOException e) {
                 }
-
-                afd.close();
-            } catch (IOException e) {
-                return;
-            }
-
-            try {
-                mMediaPlayer.prepare();
+            } else {
+                //sau khi mở activity bởi notification thì phải cập nhật lại trạng thái
                 initMediaSessionMetadata();
-            } catch (IOException e) {
             }
-
             //Work with extras here if you want
         }
 
@@ -239,8 +248,6 @@ public class BackgroundAudioService extends MediaBrowserServiceCompat implements
             super.onSkipToPrevious();
             Log.d("AAA", "onSkipToPrevious");
         }
-
-
     };
 
     private void initNoisyReceiver() {
@@ -260,13 +267,16 @@ public class BackgroundAudioService extends MediaBrowserServiceCompat implements
         stopForeground(true);
         stopSelf();
         NotificationManagerCompat.from(this).cancelAll();
+        isServiceRunning = false;
     }
 
     private void initMediaPlayer() {
-        mMediaPlayer = new MediaPlayer();
-        mMediaPlayer.setWakeMode(getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK);
-        mMediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
-        mMediaPlayer.setVolume(1.0f, 1.0f);
+        if (mMediaPlayer == null) {
+            mMediaPlayer = new MediaPlayer();
+            mMediaPlayer.setWakeMode(getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK);
+            mMediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
+            mMediaPlayer.setVolume(1.0f, 1.0f);
+        }
     }
 
     private void showPlayingNotification() {
@@ -415,8 +425,6 @@ public class BackgroundAudioService extends MediaBrowserServiceCompat implements
     @Nullable
     @Override
     public BrowserRoot onGetRoot(@NonNull String clientPackageName, int clientUid, @Nullable Bundle rootHints) {
-        Log.d("AAA", "onGetRoot");
-
         return new BrowserRoot("root", null);
     }
 
